@@ -1,6 +1,5 @@
 FROM node:latest
-RUN npm install -g corepack@latest
-# Create the app's directory
+RUN npm install -g --force corepack@latest
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 

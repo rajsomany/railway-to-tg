@@ -23,20 +23,29 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 async function sendMessage(message, buttontext, buttonurl) {
-  await bot.telegram.sendMessage(TELEGRAM_CHAT_ID, message, {
-    parse_mode: "html",
-    disable_web_page_preview: true,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: buttontext,
-            url: buttonurl,
-          },
+  try {
+    await bot.telegram.sendMessage(TELEGRAM_CHAT_ID, message, {
+      parse_mode: "html",
+      disable_web_page_preview: true,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: buttontext,
+              url: buttonurl,
+            },
+          ],
         ],
-      ],
-    },
-  });
+      },
+    });
+    console.log("✓ Message sent to Telegram successfully");
+  } catch (error) {
+    console.error("❌ Failed to send Telegram message:");
+    console.error("Error code:", error.code);
+    console.error("Error message:", error.message);
+    console.error("Error response:", error.response?.body);
+    throw error; // Re-throw so the webhook handler can catch it
+  }
 }
 
 router.post("/webhook", async (req, res) => {
@@ -57,22 +66,50 @@ router.post("/webhook", async (req, res) => {
     // Handle deployment events
     if (eventType && eventType.startsWith("Deployment.")) {
       let emoji = "ℹ️";
-      let statusMessage = status || eventType.replace("Deployment.", "");
+      let statusMessage = status || eventType.replace("Deployment.", "").toUpperCase();
 
       // Map event types to emojis and status
-      if (eventType === "Deployment.succeeded") {
-        emoji = "✅";
-        statusMessage = "SUCCESS";
-      } else if (eventType === "Deployment.building") {
-        emoji = "⚒️";
-        statusMessage = "BUILDING";
-      } else if (eventType === "Deployment.deploying") {
-        emoji = "🚀";
-        statusMessage = "DEPLOYING";
-      } else if (eventType === "Deployment.failed" || eventType === "Deployment.crashed") {
-        emoji = "❌";
-        statusMessage = "FAILED";
+      switch (eventType) {
+        case "Deployment.queued":
+          emoji = "⏳";
+          statusMessage = "QUEUED";
+          break;
+        case "Deployment.initializing":
+          emoji = "🔄";
+          statusMessage = "INITIALIZING";
+          break;
+        case "Deployment.started":
+          emoji = "▶️";
+          statusMessage = "STARTED";
+          break;
+        case "Deployment.building":
+          emoji = "⚒️";
+          statusMessage = "BUILDING";
+          break;
+        case "Deployment.deploying":
+          emoji = "🚀";
+          statusMessage = "DEPLOYING";
+          break;
+        case "Deployment.succeeded":
+          emoji = "✅";
+          statusMessage = "SUCCESS";
+          break;
+        case "Deployment.failed":
+        case "Deployment.crashed":
+          emoji = "❌";
+          statusMessage = "FAILED";
+          break;
+        case "Deployment.removed":
+          emoji = "🗑️";
+          statusMessage = "REMOVED";
+          break;
+        default:
+          // Catch-all for any new Railway event types
+          console.log(`⚠️ Unknown deployment event: ${eventType} - using generic handler`);
+          statusMessage = eventType.replace("Deployment.", "").toUpperCase();
       }
+
+      console.log(`📤 Sending Telegram message for: ${eventType} (${statusMessage})`);
 
       await sendMessage(
         `<b>Deployment: ${projectName}</b>\n${emoji} Status: <code>${statusMessage}</code>\n🌳 Environment: <code>${environmentName}</code>\n👨‍💻 Author: <code>${commitAuthor}</code>\n🕐 Time: <code>${new Date(timestamp).toLocaleString()}</code>`,
@@ -80,9 +117,9 @@ router.post("/webhook", async (req, res) => {
         `https://railway.app/project/${projectId}/`
       );
 
-      console.log(`✓ Telegram message sent for ${eventType}`);
+      console.log(`✅ Telegram message sent successfully for ${eventType}`);
     } else {
-      console.log("Unhandled event type:", eventType);
+      console.log("❌ Unhandled event type:", eventType);
     }
 
     res.sendStatus(200);

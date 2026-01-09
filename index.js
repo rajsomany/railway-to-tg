@@ -39,36 +39,57 @@ async function sendMessage(message, buttontext, buttonurl) {
   });
 }
 
-router.post("/webhook", (req, res) => {
+router.post("/webhook", async (req, res) => {
   let data = req.body;
-  if (data.type === "DEPLOY" && data.status === "SUCCESS") {
-    sendMessage(
-      `<b>Deployment: ${data.project.name}</b>\n\✅ Status: <code>${data.status}</code>\n🌳 Environment: <code>${data.environment.name}</code>\n👨‍💻 Creator: <code>${data.deployment.creator.name}</code>`,
-      "View Deployment",
-      `https://railway.app/project/${data.project.id}/`
-    );
-  } else if (data.type === "DEPLOY" && data.status === "BUILDING") {
-    sendMessage(
-      `<b>Deployment: ${data.project.name}</b>\n\⚒️ Status: <code>${data.status}</code>\n🌳 Environment: <code>${data.environment.name}</code>\n👨‍💻 Creator: <code>${data.deployment.creator.name}</code>`,
-      "View Deployment",
-      `https://railway.app/project/${data.project.id}/`
-    );
-  } else if (data.type === "DEPLOY" && data.status === "DEPLOYING") {
-    sendMessage(
-      `<b>Deployment: ${data.project.name}</b>\n\🚀 Status: <code>${data.status}</code>\n🌳 Environment: <code>${data.environment.name}</code>\n👨‍💻 Creator: <code>${data.deployment.creator.name}</code>`,
-      "View Deployment",
-      `https://railway.app/project/${data.project.id}/`
-    );
-  } else if (data.type === "DEPLOY" && data.status === "CRASHED") {
-    sendMessage(
-      `<b>Deployment: ${data.project.name}</b>\n\❌ Status: <code>${data.status}</code>\n🌳 Environment: <code>${data.environment.name}</code>\n👨‍💻 Creator: <code>${data.deployment.creator.name}</code>`,
-      "View Deployment",
-      `https://railway.app/project/${data.project.id}/`
-    );
-  } else {
-    console.log("Unknown event: ", data);
+
+  console.log("Received webhook event:", JSON.stringify(data, null, 2));
+
+  try {
+    // Railway's new webhook payload structure
+    const eventType = data.type;
+    const status = data.details?.status;
+    const projectName = data.resource?.project?.name;
+    const projectId = data.resource?.project?.id;
+    const environmentName = data.resource?.environment?.name;
+    const commitAuthor = data.details?.commitAuthor || "Unknown";
+    const timestamp = data.timestamp;
+
+    // Handle deployment events
+    if (eventType && eventType.startsWith("Deployment.")) {
+      let emoji = "ℹ️";
+      let statusMessage = status || eventType.replace("Deployment.", "");
+
+      // Map event types to emojis and status
+      if (eventType === "Deployment.succeeded") {
+        emoji = "✅";
+        statusMessage = "SUCCESS";
+      } else if (eventType === "Deployment.building") {
+        emoji = "⚒️";
+        statusMessage = "BUILDING";
+      } else if (eventType === "Deployment.deploying") {
+        emoji = "🚀";
+        statusMessage = "DEPLOYING";
+      } else if (eventType === "Deployment.failed" || eventType === "Deployment.crashed") {
+        emoji = "❌";
+        statusMessage = "FAILED";
+      }
+
+      await sendMessage(
+        `<b>Deployment: ${projectName}</b>\n${emoji} Status: <code>${statusMessage}</code>\n🌳 Environment: <code>${environmentName}</code>\n👨‍💻 Author: <code>${commitAuthor}</code>\n🕐 Time: <code>${new Date(timestamp).toLocaleString()}</code>`,
+        "View Deployment",
+        `https://railway.app/project/${projectId}/`
+      );
+
+      console.log(`✓ Telegram message sent for ${eventType}`);
+    } else {
+      console.log("Unhandled event type:", eventType);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    res.sendStatus(500);
   }
-  res.sendStatus(200);
 });
 
 app.get("/", (req, res) => {
